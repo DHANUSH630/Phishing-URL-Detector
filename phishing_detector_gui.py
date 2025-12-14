@@ -539,6 +539,288 @@ class IndicatorCard(tk.Frame):
                 font=('Segoe UI', 8)).pack()
 
 
+class ThreatBarChart(tk.Canvas):
+    """Vertical bar chart showing threat breakdown by severity"""
+    
+    def __init__(self, parent, width=350, height=200, **kwargs):
+        super().__init__(parent, width=width, height=height, bg=COLORS['bg_card'],
+                        highlightthickness=0, **kwargs)
+        self.chart_width = width
+        self.chart_height = height
+        self.data = {'critical': 0, 'high': 0, 'medium': 0, 'low': 0}
+        self.max_value = 50
+        self.animated_data = {'critical': 0, 'high': 0, 'medium': 0, 'low': 0}
+        self.draw_chart()
+    
+    def draw_chart(self):
+        self.delete('all')
+        
+        # Chart area
+        left_margin = 60
+        right_margin = 20
+        top_margin = 30
+        bottom_margin = 50
+        
+        chart_w = self.chart_width - left_margin - right_margin
+        chart_h = self.chart_height - top_margin - bottom_margin
+        
+        # Title
+        self.create_text(self.chart_width // 2, 12, text="Threat Score by Severity",
+                        fill=COLORS['text_primary'], font=('Segoe UI', 10, 'bold'))
+        
+        # Draw grid lines
+        for i in range(5):
+            y = top_margin + (i * chart_h / 4)
+            self.create_line(left_margin, y, self.chart_width - right_margin, y,
+                           fill=COLORS['border'], dash=(2, 4))
+            value = int(self.max_value - (i * self.max_value / 4))
+            self.create_text(left_margin - 10, y, text=str(value),
+                           fill=COLORS['text_muted'], font=('Segoe UI', 8), anchor='e')
+        
+        # Draw bars
+        categories = [
+            ('critical', 'CRIT', COLORS['critical']),
+            ('high', 'HIGH', COLORS['high']),
+            ('medium', 'MED', COLORS['medium']),
+            ('low', 'LOW', COLORS['low']),
+        ]
+        
+        bar_width = chart_w / len(categories) - 20
+        
+        for i, (key, label, color) in enumerate(categories):
+            x = left_margin + (i * (chart_w / len(categories))) + 10
+            value = self.animated_data.get(key, 0)
+            bar_height = (value / self.max_value) * chart_h if self.max_value > 0 else 0
+            bar_height = min(bar_height, chart_h)
+            
+            # Bar
+            if bar_height > 0:
+                self.create_rectangle(
+                    x, top_margin + chart_h - bar_height,
+                    x + bar_width, top_margin + chart_h,
+                    fill=color, outline=''
+                )
+                
+                # Value on top of bar
+                if bar_height > 20:
+                    self.create_text(
+                        x + bar_width / 2, top_margin + chart_h - bar_height - 8,
+                        text=str(int(value)), fill=color, font=('Segoe UI', 9, 'bold')
+                    )
+            
+            # Label below
+            self.create_text(
+                x + bar_width / 2, top_margin + chart_h + 15,
+                text=label, fill=COLORS['text_secondary'], font=('Segoe UI', 8, 'bold')
+            )
+        
+        # Y-axis label
+        self.create_text(15, self.chart_height // 2, text="Points",
+                        fill=COLORS['text_muted'], font=('Segoe UI', 8),
+                        angle=90)
+    
+    def set_data(self, data: dict):
+        self.data = data
+        # Find max value for scaling
+        max_val = max(data.values()) if data.values() else 50
+        self.max_value = max(50, max_val + 10)
+        self.animate_bars()
+    
+    def animate_bars(self):
+        done = True
+        for key in self.data:
+            target = self.data[key]
+            current = self.animated_data.get(key, 0)
+            if abs(current - target) > 0.5:
+                self.animated_data[key] = current + (target - current) * 0.2
+                done = False
+            else:
+                self.animated_data[key] = target
+        
+        self.draw_chart()
+        if not done:
+            self.after(30, self.animate_bars)
+
+
+class ThreatLevelGraph(tk.Canvas):
+    """Horizontal threat level indicator with zones"""
+    
+    def __init__(self, parent, width=350, height=80, **kwargs):
+        super().__init__(parent, width=width, height=height, bg=COLORS['bg_card'],
+                        highlightthickness=0, **kwargs)
+        self.graph_width = width
+        self.graph_height = height
+        self.percentage = 0
+        self.target_percentage = 0
+        self.level = 'SAFE'
+        self.draw_graph()
+    
+    def draw_graph(self):
+        self.delete('all')
+        
+        margin = 20
+        bar_height = 25
+        bar_y = 30
+        bar_width = self.graph_width - (margin * 2)
+        
+        # Title
+        self.create_text(self.graph_width // 2, 12, text="Threat Level Meter",
+                        fill=COLORS['text_primary'], font=('Segoe UI', 10, 'bold'))
+        
+        # Draw zone backgrounds
+        zones = [
+            (0, 10, COLORS['safe']),
+            (10, 25, COLORS['low']),
+            (25, 40, COLORS['medium']),
+            (40, 60, COLORS['high']),
+            (60, 100, COLORS['critical']),
+        ]
+        
+        for start_pct, end_pct, color in zones:
+            x1 = margin + (start_pct / 100) * bar_width
+            x2 = margin + (end_pct / 100) * bar_width
+            self.create_rectangle(x1, bar_y, x2, bar_y + bar_height,
+                                 fill=color, outline='')
+        
+        # Draw border
+        self.create_rectangle(margin, bar_y, margin + bar_width, bar_y + bar_height,
+                             outline=COLORS['border'], width=2)
+        
+        # Draw pointer/marker
+        pointer_x = margin + (self.percentage / 100) * bar_width
+        pointer_x = max(margin + 5, min(pointer_x, margin + bar_width - 5))
+        
+        # Pointer triangle
+        self.create_polygon(
+            pointer_x - 8, bar_y + bar_height + 5,
+            pointer_x + 8, bar_y + bar_height + 5,
+            pointer_x, bar_y + bar_height - 3,
+            fill=COLORS['text_primary'], outline=''
+        )
+        
+        # Percentage label below pointer
+        self.create_text(pointer_x, bar_y + bar_height + 20,
+                        text=f"{self.percentage:.1f}%",
+                        fill=COLORS['text_primary'], font=('Segoe UI', 10, 'bold'))
+        
+        # Zone labels at bottom
+        labels = [("SAFE", 5), ("LOW", 17), ("MED", 32), ("HIGH", 50), ("CRIT", 80)]
+        for label, pct in labels:
+            x = margin + (pct / 100) * bar_width
+            self.create_text(x, bar_y - 8, text=label,
+                           fill=COLORS['text_muted'], font=('Segoe UI', 7))
+    
+    def set_value(self, percentage, level):
+        self.target_percentage = percentage
+        self.level = level
+        self.animate_to_target()
+    
+    def animate_to_target(self):
+        if abs(self.percentage - self.target_percentage) < 0.3:
+            self.percentage = self.target_percentage
+            self.draw_graph()
+            return
+        
+        diff = self.target_percentage - self.percentage
+        self.percentage += diff * 0.15
+        self.draw_graph()
+        self.after(25, self.animate_to_target)
+
+
+class RiskRadarChart(tk.Canvas):
+    """Spider/Radar chart for risk categories"""
+    
+    def __init__(self, parent, size=250, **kwargs):
+        super().__init__(parent, width=size, height=size, bg=COLORS['bg_card'],
+                        highlightthickness=0, **kwargs)
+        self.size = size
+        self.center = size // 2
+        self.radius = size // 2 - 40
+        self.categories = {}
+        self.animated_categories = {}
+        self.draw_radar()
+    
+    def draw_radar(self):
+        self.delete('all')
+        
+        # Title
+        self.create_text(self.center, 15, text="Risk Category Radar",
+                        fill=COLORS['text_primary'], font=('Segoe UI', 10, 'bold'))
+        
+        category_names = ['Domain', 'Structure', 'Brand', 'Encoding', 'Protocol']
+        num_categories = len(category_names)
+        
+        # Draw background circles
+        for i in range(1, 5):
+            r = self.radius * (i / 4)
+            self.create_oval(
+                self.center - r, self.center - r + 15,
+                self.center + r, self.center + r + 15,
+                outline=COLORS['border'], dash=(2, 4)
+            )
+        
+        # Draw axes
+        for i in range(num_categories):
+            angle = math.radians(90 - (360 / num_categories) * i)
+            x = self.center + self.radius * math.cos(angle)
+            y = self.center + 15 - self.radius * math.sin(angle)
+            
+            self.create_line(self.center, self.center + 15, x, y,
+                           fill=COLORS['border'])
+            
+            # Labels
+            label_x = self.center + (self.radius + 25) * math.cos(angle)
+            label_y = self.center + 15 - (self.radius + 25) * math.sin(angle)
+            self.create_text(label_x, label_y, text=category_names[i],
+                           fill=COLORS['text_secondary'], font=('Segoe UI', 8))
+        
+        # Draw data polygon
+        if self.animated_categories:
+            points = []
+            cat_keys = ['Domain Trust', 'URL Structure', 'Brand Safety', 
+                       'Encoding', 'Protocol']
+            max_val = 50
+            
+            for i, key in enumerate(cat_keys):
+                value = self.animated_categories.get(key, 0)
+                ratio = min(value / max_val, 1) if max_val > 0 else 0
+                angle = math.radians(90 - (360 / num_categories) * i)
+                r = self.radius * ratio
+                x = self.center + r * math.cos(angle)
+                y = self.center + 15 - r * math.sin(angle)
+                points.extend([x, y])
+            
+            if len(points) >= 6:
+                # Fill - use a darker shade since tkinter doesn't support alpha
+                self.create_polygon(points, fill='#1a3a5c',
+                                   outline=COLORS['accent_blue'], width=2)
+                
+                # Points
+                for i in range(0, len(points), 2):
+                    self.create_oval(points[i] - 4, points[i + 1] - 4,
+                                   points[i] + 4, points[i + 1] + 4,
+                                   fill=COLORS['accent_blue'], outline='')
+    
+    def set_data(self, categories: dict):
+        self.categories = categories
+        self.animate_data()
+    
+    def animate_data(self):
+        done = True
+        for key in self.categories:
+            target = self.categories[key]
+            current = self.animated_categories.get(key, 0)
+            if abs(current - target) > 0.5:
+                self.animated_categories[key] = current + (target - current) * 0.15
+                done = False
+            else:
+                self.animated_categories[key] = target
+        
+        self.draw_radar()
+        if not done:
+            self.after(30, self.animate_data)
+
+
 # ============================================================
 # MAIN APPLICATION
 # ============================================================
@@ -912,6 +1194,67 @@ class PhishingDetectorApp:
             tk.Label(row, text=value, anchor='e',
                     bg=COLORS['bg_card'], fg=COLORS['text_primary'],
                     font=('Segoe UI', 10, 'bold')).pack(side='right')
+        
+        # ==================== VISUAL GRAPHS SECTION ====================
+        
+        # Create a new row for graphs below the main content
+        graphs_frame = tk.Frame(self.scrollable_frame, bg=COLORS['bg_dark'])
+        graphs_frame.pack(fill='x', pady=(20, 10))
+        
+        # Graphs header
+        tk.Label(graphs_frame, text="📊 Visual Risk Analysis",
+                bg=COLORS['bg_dark'], fg=COLORS['text_primary'],
+                font=('Segoe UI', 14, 'bold')).pack(anchor='w', pady=(0, 15))
+        
+        # Container for graphs
+        graphs_container = tk.Frame(graphs_frame, bg=COLORS['bg_dark'])
+        graphs_container.pack(fill='x')
+        
+        # Left graphs column
+        left_graphs = tk.Frame(graphs_container, bg=COLORS['bg_dark'])
+        left_graphs.pack(side='left', fill='both', expand=True, padx=(0, 10))
+        
+        # Center graphs column  
+        center_graphs = tk.Frame(graphs_container, bg=COLORS['bg_dark'])
+        center_graphs.pack(side='left', fill='both', expand=True, padx=10)
+        
+        # Right graphs column
+        right_graphs = tk.Frame(graphs_container, bg=COLORS['bg_dark'])
+        right_graphs.pack(side='left', fill='both', expand=True, padx=(10, 0))
+        
+        # === THREAT LEVEL METER ===
+        meter_card = tk.Frame(left_graphs, bg=COLORS['bg_card'], padx=15, pady=15)
+        meter_card.pack(fill='x', pady=(0, 10))
+        meter_card.configure(highlightbackground=COLORS['border'], highlightthickness=1)
+        
+        self.threat_meter = ThreatLevelGraph(meter_card, width=320, height=80)
+        self.threat_meter.pack()
+        self.threat_meter.set_value(result.threat_percentage, result.threat_level)
+        
+        # === BAR CHART ===
+        chart_card = tk.Frame(center_graphs, bg=COLORS['bg_card'], padx=15, pady=15)
+        chart_card.pack(fill='x', pady=(0, 10))
+        chart_card.configure(highlightbackground=COLORS['border'], highlightthickness=1)
+        
+        # Calculate severity scores for bar chart
+        severity_scores = {'critical': 0, 'high': 0, 'medium': 0, 'low': 0}
+        for ind in result.threat_indicators:
+            sev = ind.severity.lower()
+            if sev in severity_scores:
+                severity_scores[sev] += ind.score
+        
+        self.bar_chart = ThreatBarChart(chart_card, width=320, height=180)
+        self.bar_chart.pack()
+        self.bar_chart.set_data(severity_scores)
+        
+        # === RADAR CHART ===
+        radar_card = tk.Frame(right_graphs, bg=COLORS['bg_card'], padx=15, pady=15)
+        radar_card.pack(fill='x', pady=(0, 10))
+        radar_card.configure(highlightbackground=COLORS['border'], highlightthickness=1)
+        
+        self.radar_chart = RiskRadarChart(radar_card, size=220)
+        self.radar_chart.pack()
+        self.radar_chart.set_data(categories)
 
 
 # ============================================================
